@@ -68,7 +68,7 @@ export async function render(container, actionsContainer) {
         ${servicePills}
         <span class="w-px h-5 bg-desco-200 mx-1"></span>
         <button class="qpill" data-filter="section" data-value="dining">Dining</button>
-        <button class="qpill" data-filter="section" data-value="walkin">Walk-in</button>
+        <button class="qpill" data-filter="section" data-value="walkin">Drink lounge</button>
         <span class="w-px h-5 bg-desco-200 mx-1"></span>
         <button class="qpill" data-filter="status" data-value="confirmed">Confirmed</button>
         <button class="qpill" data-filter="status" data-value="cancelled">Cancelled</button>
@@ -213,7 +213,7 @@ async function loadBookings(container) {
         <span><strong class="text-desco-900 text-sm">${bookings.length}</strong> bookings</span>
         <span><strong class="text-desco-900 text-sm">${totalCovers}</strong> covers</span>
         ${diningCovers ? `<span>Dining: <strong class="text-desco-700">${diningCovers}</strong></span>` : ''}
-        ${walkinCovers ? `<span>Walk-in: <strong class="text-desco-700">${walkinCovers}</strong></span>` : ''}
+        ${walkinCovers ? `<span>Drink lounge: <strong class="text-desco-700">${walkinCovers}</strong></span>` : ''}
         <span>Arrived: <strong class="text-green-600">${arrivedCount}</strong> / ${confirmed.length}</span>
       </div>
       <div class="bg-white rounded-xl border border-desco-200 overflow-hidden">
@@ -249,7 +249,7 @@ async function loadBookings(container) {
 
 function bookingRow(b, showDate) {
   const time = b.time_slot ? b.time_slot.slice(0, 5) : '\u2014';
-  const sectionLabel = b.section === 'dining' ? 'Dining' : 'Walk-in';
+  const sectionLabel = b.section === 'dining' ? 'Dining' : 'Drink lounge';
   const serviceName = b.services?.name || '\u2014';
   const isCancelled = b.status === 'cancelled';
   const dateStr = b.booking_date ? new Date(b.booking_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '';
@@ -331,7 +331,7 @@ async function openBookingForm(booking, onDone) {
           <label class="block text-xs font-medium text-desco-500 uppercase tracking-wider mb-1.5">Section</label>
           <select id="bk-section" class="w-full px-3 py-2.5 bg-white border border-desco-200 rounded-lg text-sm">
             <option value="dining" ${b.section === 'dining' ? 'selected' : ''}>Dining Table</option>
-            <option value="walkin" ${b.section === 'walkin' ? 'selected' : ''}>Walk-in Lounge</option>
+            <option value="walkin" ${b.section === 'walkin' ? 'selected' : ''}>Drink lounge</option>
           </select>
         </div>
       </div>
