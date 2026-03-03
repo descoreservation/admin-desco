@@ -260,7 +260,7 @@ function openDayOverride(date, services, serviceColors, dayConfigMap, overrideMa
           <input type="number" class="ov-walkin px-2 py-1.5 border border-desco-200 rounded text-xs" data-service="${s.id}" value="${resolvedWalkin}" min="0"/>
         </div>
         <div class="grid grid-cols-4 gap-2 mt-1 text-[9px] text-desco-400 uppercase tracking-wider">
-          <span>Start</span><span>End</span><span>Dining</span><span>Walk-in</span>
+          <span>Start</span><span>End</span><span>Dining</span><span>Drink lounge</span>
         </div>
         <input type="text" class="ov-note mt-2 w-full px-2 py-1.5 border border-desco-200 rounded text-xs" data-service="${s.id}" value="${note}" placeholder="Note (e.g. Christmas, Private event)"/>
       </div>
