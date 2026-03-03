@@ -7,6 +7,9 @@ import { openModal, confirmDialog } from '../lib/modal.js';
 
 let filters = {
   date: new Date().toISOString().split('T')[0],
+  date_from: '',
+  date_to: '',
+  rangeMode: false,
   section: 'all',
   status: 'confirmed',
   service: 'all',
@@ -71,7 +74,15 @@ export async function render(container, actionsContainer) {
         <button class="qpill" data-filter="status" data-value="cancelled">Cancelled</button>
       </div>
       <div class="flex items-center gap-3">
-        <input id="f-date" type="date" value="${filters.date}" class="px-3 py-2 border border-desco-200 rounded-lg text-sm bg-white"/>
+        <div id="date-single" class="flex items-center gap-2">
+          <input id="f-date" type="date" value="${filters.date}" class="px-3 py-2 border border-desco-200 rounded-lg text-sm bg-white"/>
+        </div>
+        <div id="date-range" class="items-center gap-2" style="display:none">
+          <input id="f-date-from" type="date" value="${filters.date_from}" class="px-3 py-2 border border-desco-200 rounded-lg text-sm bg-white"/>
+          <span class="text-desco-400 text-xs">to</span>
+          <input id="f-date-to" type="date" value="${filters.date_to}" class="px-3 py-2 border border-desco-200 rounded-lg text-sm bg-white"/>
+        </div>
+        <button id="toggle-range" class="text-xs text-desco-500 hover:text-desco-700 border border-desco-200 px-2.5 py-1.5 rounded-lg transition-colors">Range</button>
         <input id="f-search" type="text" value="${filters.search}" placeholder="Search by name..." class="px-3 py-2 border border-desco-200 rounded-lg text-sm bg-white flex-1 max-w-xs"/>
         <button id="clear-filters" class="text-xs text-desco-400 hover:text-desco-600 transition-colors">Clear</button>
       </div>
@@ -84,6 +95,7 @@ export async function render(container, actionsContainer) {
     pill.addEventListener('click', () => {
       const key = pill.dataset.filter;
       const val = pill.dataset.value;
+      if (key === 'date' && filters.rangeMode) return; // ignore date pills in range mode
       if (key === 'date') { filters.date = val; document.getElementById('f-date').value = val; }
       else { filters[key] = filters[key] === val ? 'all' : val; }
       updatePillStates();
@@ -95,14 +107,46 @@ export async function render(container, actionsContainer) {
     updatePillStates();
     loadBookings(container);
   });
+
+  // Range toggle
+  document.getElementById('toggle-range').addEventListener('click', () => {
+    filters.rangeMode = !filters.rangeMode;
+    document.getElementById('date-single').style.display = filters.rangeMode ? 'none' : 'flex';
+    document.getElementById('date-range').style.display = filters.rangeMode ? 'flex' : 'none';
+    document.getElementById('toggle-range').className = `text-xs px-2.5 py-1.5 rounded-lg transition-colors border ${
+      filters.rangeMode
+        ? 'bg-desco-900 text-white border-desco-900'
+        : 'text-desco-500 hover:text-desco-700 border-desco-200'
+    }`;
+    if (filters.rangeMode && !filters.date_from) {
+      filters.date_from = filters.date;
+      filters.date_to = filters.date;
+      document.getElementById('f-date-from').value = filters.date_from;
+      document.getElementById('f-date-to').value = filters.date_to;
+    }
+    loadBookings(container);
+  });
+
+  // Range date listeners
+  document.getElementById('f-date-from').addEventListener('change', () => {
+    filters.date_from = document.getElementById('f-date-from').value;
+    loadBookings(container);
+  });
+  document.getElementById('f-date-to').addEventListener('change', () => {
+    filters.date_to = document.getElementById('f-date-to').value;
+    loadBookings(container);
+  });
   document.getElementById('f-search').addEventListener('input', debounce(() => {
     filters.search = document.getElementById('f-search').value.trim();
     loadBookings(container);
   }, 300));
   document.getElementById('clear-filters').addEventListener('click', () => {
-    filters = { date: today, section: 'all', status: 'confirmed', service: 'all', search: '' };
+    filters = { date: today, date_from: '', date_to: '', rangeMode: false, section: 'all', status: 'confirmed', service: 'all', search: '' };
     document.getElementById('f-date').value = today;
     document.getElementById('f-search').value = '';
+    document.getElementById('date-single').style.display = 'flex';
+    document.getElementById('date-range').style.display = 'none';
+    document.getElementById('toggle-range').className = 'text-xs px-2.5 py-1.5 rounded-lg transition-colors border text-desco-500 hover:text-desco-700 border-desco-200';
     updatePillStates();
     loadBookings(container);
   });
@@ -127,7 +171,13 @@ async function loadBookings(container) {
 
   try {
     const headers = await getAuthHeaders();
-    const params = new URLSearchParams({ date: filters.date });
+    const params = new URLSearchParams();
+    if (filters.rangeMode && filters.date_from && filters.date_to) {
+      params.set('date_from', filters.date_from);
+      params.set('date_to', filters.date_to);
+    } else {
+      params.set('date', filters.date);
+    }
     if (filters.section !== 'all') params.set('section', filters.section);
     if (filters.status !== 'all') params.set('status', filters.status);
     if (filters.search) params.set('search', filters.search);
@@ -371,7 +421,13 @@ async function exportBookings() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) { showToast('Not authenticated', 'error'); return; }
 
-    const params = new URLSearchParams({ date: filters.date });
+    const params = new URLSearchParams();
+    if (filters.rangeMode && filters.date_from && filters.date_to) {
+      params.set('date_from', filters.date_from);
+      params.set('date_to', filters.date_to);
+    } else {
+      params.set('date', filters.date);
+    }
     if (filters.section !== 'all') params.set('section', filters.section);
     if (filters.status !== 'all') params.set('status', filters.status);
     if (filters.service !== 'all') params.set('service', filters.service);
@@ -390,7 +446,9 @@ async function exportBookings() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `desco-bookings-${filters.date}.csv`;
+    a.download = filters.rangeMode
+      ? `desco-bookings-${filters.date_from}-to-${filters.date_to}.csv`
+      : `desco-bookings-${filters.date}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Exported to CSV', 'success');
