@@ -84,7 +84,7 @@ function serviceCard(service, dayConfig) {
 
   const sections = [];
   if (s.dining_enabled) sections.push(`Dining: <strong class="text-desco-700">${s.dining_capacity}</strong>`);
-  if (s.walkin_enabled) sections.push(`Walk-in: <strong class="text-desco-700">${s.walkin_capacity}</strong>`);
+  if (s.walkin_enabled) sections.push(`Drink lounge: <strong class="text-desco-700">${s.walkin_capacity}</strong>`);
 
   return `
     <div class="bg-white rounded-xl border border-desco-200 ${!s.is_active ? 'opacity-50' : ''}">
@@ -229,7 +229,7 @@ function openServiceForm(service, existingDayConfigs, onDone) {
 
       <div class="pt-3 border-t border-desco-100">
         <div class="flex items-center justify-between mb-3">
-          <label class="text-xs font-medium text-desco-500 uppercase tracking-wider">Walk-in Lounge</label>
+          <label class="text-xs font-medium text-desco-500 uppercase tracking-wider">Drink lounge Lounge</label>
           <label class="relative inline-flex items-center cursor-pointer">
             <input id="svc-walkin-on" type="checkbox" ${s.walkin_enabled !== false ? 'checked' : ''} class="sr-only peer"/>
             <div class="w-9 h-5 bg-desco-200 peer-checked:bg-desco-900 rounded-full after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
@@ -251,7 +251,7 @@ function openServiceForm(service, existingDayConfigs, onDone) {
             <span class="w-[78px]">Start</span>
             <span class="w-[78px]">End</span>
             <span class="w-[60px]">Dining</span>
-            <span class="w-[60px]">Walk-in</span>
+            <span class="w-[60px]">Drink lounge</span>
           </div>
           ${dayRows}
         </div>
