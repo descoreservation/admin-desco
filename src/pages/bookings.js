@@ -120,7 +120,10 @@ export async function render(container, actionsContainer) {
     }`;
     if (filters.rangeMode && !filters.date_from) {
       filters.date_from = filters.date;
-      filters.date_to = filters.date;
+      // Default to end of current month
+      const d = new Date(filters.date);
+      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      filters.date_to = endOfMonth.toISOString().split('T')[0];
       document.getElementById('f-date-from').value = filters.date_from;
       document.getElementById('f-date-to').value = filters.date_to;
     }
