@@ -17,8 +17,10 @@ export default async function handler(req, res) {
   const admin = await verifyAdmin(req);
   if (!admin) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { date, section, status, service, search } = req.query;
-  if (!date) return res.status(400).json({ error: 'Date is required' });
+  const { date, date_from, date_to, section, status, service, search } = req.query;
+  if (!date && (!date_from || !date_to)) {
+    return res.status(400).json({ error: 'Date or date range is required' });
+  }
 
   try {
     const supabase = getSupabaseAdmin();
@@ -26,9 +28,17 @@ export default async function handler(req, res) {
     let query = supabase
       .from('bookings')
       .select('*, services(name)')
-      .eq('booking_date', date)
+      .order('booking_date', { ascending: true })
       .order('time_slot', { ascending: true, nullsFirst: false })
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(10000);
+
+    // Date range or single date
+    if (date_from && date_to) {
+      query = query.gte('booking_date', date_from).lte('booking_date', date_to);
+    } else {
+      query = query.eq('booking_date', date);
+    }
 
     if (section && section !== 'all') query = query.eq('section', section);
     if (status && status !== 'all') query = query.eq('status', status);
@@ -58,11 +68,12 @@ export default async function handler(req, res) {
 
     // Build CSV
     const headers = [
-      'Time', 'First Name', 'Last Name', 'Phone', 'Email', 'DOB',
+      'Date', 'Time', 'First Name', 'Last Name', 'Phone', 'Email', 'DOB',
       'Section', 'Service', 'Party Size', 'Status', 'Source', 'Arrived', 'Notes'
     ];
 
     const rows = decrypted.map(b => [
+      b.booking_date || '',
       b.time_slot?.slice(0, 5) || '',
       b.first_name,
       b.last_name,
@@ -80,8 +91,12 @@ export default async function handler(req, res) {
 
     const csv = [headers.join(','), ...rows].join('\n');
 
+    const filename = date_from && date_to
+      ? `desco-bookings-${date_from}-to-${date_to}.csv`
+      : `desco-bookings-${date}.csv`;
+
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="desco-bookings-${date}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.status(200).send(csv);
 
   } catch (err) {
