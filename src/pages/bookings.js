@@ -511,46 +511,48 @@ async function cancelBooking(booking, onDone) {
 // ============================================================
 // EXPORT
 // ============================================================
+// ============================================================
+// EXPORT (via API route for decryption)
+// ============================================================
 async function exportBookings() {
-  const { data: bookings, error } = await supabase
-    .from('bookings')
-    .select('*, services(name)')
-    .eq('booking_date', filters.date)
-    .order('time_slot');
+  try {
+    // Get auth token
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      showToast('Not authenticated', 'error');
+      return;
+    }
 
-  if (error || !bookings?.length) {
-    showToast('No bookings to export', 'error');
-    return;
+    // Build query params from current filters
+    const params = new URLSearchParams({ date: filters.date });
+    if (filters.section !== 'all') params.set('section', filters.section);
+    if (filters.status !== 'all') params.set('status', filters.status);
+    if (filters.service !== 'all') params.set('service', filters.service);
+    if (filters.search) params.set('search', filters.search);
+
+    const res = await fetch(`/api/export?${params}`, {
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      showToast(err.error || 'Export failed', 'error');
+      return;
+    }
+
+    // Download CSV
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `desco-bookings-${filters.date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showToast('Exported to CSV', 'success');
+  } catch (err) {
+    showToast(err.message || 'Export failed', 'error');
   }
-
-  const headers = ['Time', 'First Name', 'Last Name', 'Phone', 'Email', 'DOB',
-    'Section', 'Service', 'Party Size', 'Status', 'Source', 'Arrived', 'Notes'];
-  const rows = bookings.map(b => [
-    b.time_slot?.slice(0, 5) || '',
-    b.first_name,
-    b.last_name,
-    b.phone_encrypted,
-    b.email_encrypted,
-    b.dob_encrypted,
-    b.section,
-    b.services?.name || '',
-    b.party_size,
-    b.status,
-    b.source,
-    b.arrived ? 'Yes' : 'No',
-    b.notes || '',
-  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
-
-  const csv = [headers.join(','), ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `desco-bookings-${filters.date}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-
-  showToast('Exported to CSV', 'success');
 }
 
 // ============================================================
