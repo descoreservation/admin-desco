@@ -2,7 +2,6 @@
 // Bookings Page
 // ============================================================
 import { supabase } from '../lib/supabase.js';
-import { apiGet, apiPost, apiPut, apiDelete, apiDownload } from '../lib/api.js';
 import { showToast } from '../lib/toast.js';
 import { openModal, confirmDialog } from '../lib/modal.js';
 
@@ -14,11 +13,9 @@ let filters = {
   search: '',
 };
 
-// Cache services for pills + form dropdown
 let servicesList = [];
 
 export async function render(container, actionsContainer) {
-  // Fetch services for pills
   const { data: svcs } = await supabase
     .from('services')
     .select('id, name')
@@ -26,7 +23,6 @@ export async function render(container, actionsContainer) {
     .order('sort_order');
   servicesList = svcs || [];
 
-  // Header actions
   actionsContainer.innerHTML = `
     <div class="flex items-center gap-2">
       <button id="export-btn"
@@ -54,39 +50,25 @@ export async function render(container, actionsContainer) {
   const today = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-  // Build service pills dynamically
   const servicePills = servicesList.map(s =>
     `<button class="qpill" data-filter="service" data-value="${s.id}">${s.name}</button>`
   ).join('\n        ');
 
-  // Render filters + empty table
   container.innerHTML = `
     <div class="fade-in space-y-4">
-
       <!-- Quick filter pills -->
       <div class="flex items-center gap-2 flex-wrap">
-        <!-- Date pills -->
         <button class="qpill" data-filter="date" data-value="${today}">Today</button>
         <button class="qpill" data-filter="date" data-value="${tomorrow}">Tomorrow</button>
-
         <span class="w-px h-5 bg-desco-200 mx-1"></span>
-
-        <!-- Service pills (dynamic) -->
         ${servicePills}
-
         <span class="w-px h-5 bg-desco-200 mx-1"></span>
-
-        <!-- Section pills -->
         <button class="qpill" data-filter="section" data-value="dining">Dining</button>
         <button class="qpill" data-filter="section" data-value="walkin">Walk-in</button>
-
         <span class="w-px h-5 bg-desco-200 mx-1"></span>
-
-        <!-- Status pills -->
         <button class="qpill" data-filter="status" data-value="confirmed">Confirmed</button>
         <button class="qpill" data-filter="status" data-value="cancelled">Cancelled</button>
       </div>
-
       <!-- Date picker + search -->
       <div class="flex items-center gap-3">
         <input id="f-date" type="date" value="${filters.date}"
@@ -96,57 +78,41 @@ export async function render(container, actionsContainer) {
         <button id="clear-filters"
           class="text-xs text-desco-400 hover:text-desco-600 transition-colors">Clear</button>
       </div>
-
       <!-- Bookings table -->
       <div id="bookings-table"></div>
     </div>
   `;
 
-  // Set initial pill states
   updatePillStates();
 
-  // Pill click handlers
   container.querySelectorAll('.qpill').forEach(pill => {
     pill.addEventListener('click', () => {
       const key = pill.dataset.filter;
       const val = pill.dataset.value;
-
       if (key === 'date') {
-        // Date pills set directly
         filters.date = val;
         document.getElementById('f-date').value = val;
       } else {
-        // Toggle: click again to deselect back to 'all'
         filters[key] = filters[key] === val ? 'all' : val;
       }
-
       updatePillStates();
       loadBookings(container);
     });
   });
 
-  // Date input change
   document.getElementById('f-date').addEventListener('change', () => {
     filters.date = document.getElementById('f-date').value;
     updatePillStates();
     loadBookings(container);
   });
 
-  // Search with debounce
   document.getElementById('f-search').addEventListener('input', debounce(() => {
     filters.search = document.getElementById('f-search').value.trim();
     loadBookings(container);
   }, 300));
 
-  // Clear all filters
   document.getElementById('clear-filters').addEventListener('click', () => {
-    filters = {
-      date: today,
-      section: 'all',
-      status: 'confirmed',
-      service: 'all',
-      search: '',
-    };
+    filters = { date: today, section: 'all', status: 'confirmed', service: 'all', search: '' };
     document.getElementById('f-date').value = today;
     document.getElementById('f-search').value = '';
     updatePillStates();
@@ -164,7 +130,6 @@ function updatePillStates() {
     const key = pill.dataset.filter;
     const val = pill.dataset.value;
     const isActive = filters[key] === val;
-
     pill.className = `qpill px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer ${
       isActive
         ? 'bg-desco-900 text-white'
@@ -174,7 +139,7 @@ function updatePillStates() {
 }
 
 // ============================================================
-// LOAD BOOKINGS
+// LOAD BOOKINGS (Supabase direct)
 // ============================================================
 async function loadBookings(container) {
   const tableEl = document.getElementById('bookings-table');
@@ -182,95 +147,90 @@ async function loadBookings(container) {
 
   tableEl.innerHTML = `<p class="text-desco-400 text-sm py-4">Loading...</p>`;
 
-  try {
-    // Build API params
-    const params = { date: filters.date };
-    if (filters.section !== 'all') params.section = filters.section;
-    if (filters.status !== 'all') params.status = filters.status;
-    if (filters.search) params.search = filters.search;
+  let query = supabase
+    .from('bookings')
+    .select('*, services(name)')
+    .eq('booking_date', filters.date)
+    .order('time_slot', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
 
-    let bookings = await apiGet('/bookings', params);
+  if (filters.section !== 'all') query = query.eq('section', filters.section);
+  if (filters.status !== 'all') query = query.eq('status', filters.status);
+  if (filters.search) {
+    query = query.or(`first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%`);
+  }
 
-    // Client-side service filter (API doesn't filter by service_id)
-    if (filters.service !== 'all') {
-      bookings = bookings.filter(b => b.service_id === filters.service);
-    }
+  const { data: bookings, error } = await query;
 
-    if (!bookings?.length) {
-      tableEl.innerHTML = `
-        <div class="bg-white rounded-xl border border-desco-200 p-8 text-center">
-          <p class="text-desco-400 text-sm">No bookings found.</p>
-        </div>
-      `;
-      return;
-    }
+  if (error) {
+    tableEl.innerHTML = `<p class="text-red-500 text-sm">Error: ${error.message}</p>`;
+    return;
+  }
 
-    // Summary stats
-    const confirmed = bookings.filter(b => b.status === 'confirmed');
-    const totalCovers = confirmed.reduce((sum, b) => sum + b.party_size, 0);
-    const diningCovers = confirmed.filter(b => b.section === 'dining').reduce((sum, b) => sum + b.party_size, 0);
-    const walkinCovers = confirmed.filter(b => b.section === 'walkin').reduce((sum, b) => sum + b.party_size, 0);
-    const arrivedCount = confirmed.filter(b => b.arrived).length;
+  let filtered = bookings || [];
+  if (filters.service !== 'all') {
+    filtered = filtered.filter(b => b.service_id === filters.service);
+  }
 
-    const refresh = () => loadBookings(container);
-
+  if (!filtered.length) {
     tableEl.innerHTML = `
-      <!-- Summary -->
-      <div class="flex items-center gap-6 mb-4 text-xs text-desco-500 flex-wrap">
-        <span>
-          <strong class="text-desco-900 text-sm">${bookings.length}</strong> bookings
-        </span>
-        <span>
-          <strong class="text-desco-900 text-sm">${totalCovers}</strong> covers
-        </span>
-        ${diningCovers ? `
-          <span>Dining: <strong class="text-desco-700">${diningCovers}</strong></span>
-        ` : ''}
-        ${walkinCovers ? `
-          <span>Walk-in: <strong class="text-desco-700">${walkinCovers}</strong></span>
-        ` : ''}
-        <span>
-          Arrived: <strong class="text-green-600">${arrivedCount}</strong> / ${confirmed.length}
-        </span>
-      </div>
-
-      <!-- Table -->
-      <div class="bg-white rounded-xl border border-desco-200 overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="bg-desco-50 border-b border-desco-200 text-[10px] font-medium text-desco-400 uppercase tracking-wider">
-                <th class="px-4 py-3 text-left">Time</th>
-                <th class="px-4 py-3 text-left">Guest</th>
-                <th class="px-4 py-3 text-left">Section</th>
-                <th class="px-4 py-3 text-left">Service</th>
-                <th class="px-4 py-3 text-center">Pax</th>
-                <th class="px-4 py-3 text-center">Arrived</th>
-                <th class="px-4 py-3 text-left">Status</th>
-                <th class="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-desco-100">
-              ${bookings.map(b => bookingRow(b)).join('')}
-            </tbody>
-          </table>
-        </div>
+      <div class="bg-white rounded-xl border border-desco-200 p-8 text-center">
+        <p class="text-desco-400 text-sm">No bookings found.</p>
       </div>
     `;
-
-    // Attach row actions
-    bookings.forEach(b => {
-      document.getElementById(`edit-bk-${b.id}`)?.addEventListener('click',
-        () => openBookingForm(b, refresh));
-      document.getElementById(`cancel-bk-${b.id}`)?.addEventListener('click',
-        () => cancelBooking(b, refresh));
-      document.getElementById(`arrived-bk-${b.id}`)?.addEventListener('click',
-        () => toggleArrived(b, refresh));
-    });
-
-  } catch (err) {
-    tableEl.innerHTML = `<p class="text-red-500 text-sm">Error: ${err.message}</p>`;
+    return;
   }
+
+  const confirmed = filtered.filter(b => b.status === 'confirmed');
+  const totalCovers = confirmed.reduce((sum, b) => sum + b.party_size, 0);
+  const diningCovers = confirmed.filter(b => b.section === 'dining').reduce((sum, b) => sum + b.party_size, 0);
+  const walkinCovers = confirmed.filter(b => b.section === 'walkin').reduce((sum, b) => sum + b.party_size, 0);
+  const arrivedCount = confirmed.filter(b => b.arrived).length;
+
+  const refresh = () => loadBookings(container);
+
+  tableEl.innerHTML = `
+    <!-- Summary -->
+    <div class="flex items-center gap-6 mb-4 text-xs text-desco-500 flex-wrap">
+      <span><strong class="text-desco-900 text-sm">${filtered.length}</strong> bookings</span>
+      <span><strong class="text-desco-900 text-sm">${totalCovers}</strong> covers</span>
+      ${diningCovers ? `<span>Dining: <strong class="text-desco-700">${diningCovers}</strong></span>` : ''}
+      ${walkinCovers ? `<span>Walk-in: <strong class="text-desco-700">${walkinCovers}</strong></span>` : ''}
+      <span>Arrived: <strong class="text-green-600">${arrivedCount}</strong> / ${confirmed.length}</span>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-xl border border-desco-200 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-desco-50 border-b border-desco-200 text-[10px] font-medium text-desco-400 uppercase tracking-wider">
+              <th class="px-4 py-3 text-left">Time</th>
+              <th class="px-4 py-3 text-left">Guest</th>
+              <th class="px-4 py-3 text-left">Section</th>
+              <th class="px-4 py-3 text-left">Service</th>
+              <th class="px-4 py-3 text-center">Pax</th>
+              <th class="px-4 py-3 text-center">Arrived</th>
+              <th class="px-4 py-3 text-left">Status</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-desco-100">
+            ${filtered.map(b => bookingRow(b)).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  filtered.forEach(b => {
+    document.getElementById(`edit-bk-${b.id}`)?.addEventListener('click',
+      () => openBookingForm(b, refresh));
+    document.getElementById(`cancel-bk-${b.id}`)?.addEventListener('click',
+      () => cancelBooking(b, refresh));
+    document.getElementById(`arrived-bk-${b.id}`)?.addEventListener('click',
+      () => toggleArrived(b, refresh));
+  });
 }
 
 // ============================================================
@@ -344,15 +304,16 @@ function bookingRow(b) {
 // TOGGLE ARRIVED
 // ============================================================
 async function toggleArrived(booking, onDone) {
-  try {
-    await apiPut('/bookings', {
-      id: booking.id,
-      arrived: !booking.arrived,
-    });
-    onDone();
-  } catch (err) {
-    showToast(err.message, 'error');
+  const { error } = await supabase
+    .from('bookings')
+    .update({ arrived: !booking.arrived })
+    .eq('id', booking.id);
+
+  if (error) {
+    showToast(error.message, 'error');
+    return;
   }
+  onDone();
 }
 
 // ============================================================
@@ -362,7 +323,6 @@ async function openBookingForm(booking, onDone) {
   const isEdit = !!booking;
   const b = booking || {};
 
-  // Use cached services list
   const serviceOptions = servicesList
     .map(s => `<option value="${s.id}" ${b.service_id === s.id ? 'selected' : ''}>${s.name}</option>`)
     .join('');
@@ -508,21 +468,21 @@ async function openBookingForm(booking, onDone) {
         source: 'admin',
       };
 
+      let error;
       if (isEdit) {
-        // Don't update encrypted fields if they're empty (user didn't re-enter)
         if (!phone) delete payload.phone_encrypted;
         if (!email) delete payload.email_encrypted;
         if (!dob) delete payload.dob_encrypted;
-        payload.id = b.id;
-        await apiPut('/bookings', payload);
+        ({ error } = await supabase.from('bookings').update(payload).eq('id', b.id));
       } else {
         if (!phone || !email || !dob) {
           showToast('Phone, email, and DOB are required', 'error');
           throw new Error('validation');
         }
-        await apiPost('/bookings', payload);
+        ({ error } = await supabase.from('bookings').insert(payload));
       }
 
+      if (error) { showToast(error.message, 'error'); throw error; }
       showToast(isEdit ? 'Booking updated' : 'Booking created', 'success');
       onDone();
     }
@@ -538,28 +498,59 @@ async function cancelBooking(booking, onDone) {
   );
   if (!confirmed) return;
 
-  try {
-    await apiDelete('/bookings', { id: booking.id });
-    showToast('Booking cancelled', 'success');
-    onDone();
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+  const { error } = await supabase
+    .from('bookings')
+    .update({ status: 'cancelled' })
+    .eq('id', booking.id);
+
+  if (error) { showToast(error.message, 'error'); return; }
+  showToast('Booking cancelled', 'success');
+  onDone();
 }
 
 // ============================================================
 // EXPORT
 // ============================================================
 async function exportBookings() {
-  try {
-    await apiDownload('/export', {
-      date: filters.date,
-      filename: `desco-bookings-${filters.date}.csv`,
-    });
-    showToast('Exported to CSV', 'success');
-  } catch (err) {
-    showToast(err.message || 'No bookings to export', 'error');
+  const { data: bookings, error } = await supabase
+    .from('bookings')
+    .select('*, services(name)')
+    .eq('booking_date', filters.date)
+    .order('time_slot');
+
+  if (error || !bookings?.length) {
+    showToast('No bookings to export', 'error');
+    return;
   }
+
+  const headers = ['Time', 'First Name', 'Last Name', 'Phone', 'Email', 'DOB',
+    'Section', 'Service', 'Party Size', 'Status', 'Source', 'Arrived', 'Notes'];
+  const rows = bookings.map(b => [
+    b.time_slot?.slice(0, 5) || '',
+    b.first_name,
+    b.last_name,
+    b.phone_encrypted,
+    b.email_encrypted,
+    b.dob_encrypted,
+    b.section,
+    b.services?.name || '',
+    b.party_size,
+    b.status,
+    b.source,
+    b.arrived ? 'Yes' : 'No',
+    b.notes || '',
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `desco-bookings-${filters.date}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  showToast('Exported to CSV', 'success');
 }
 
 // ============================================================
