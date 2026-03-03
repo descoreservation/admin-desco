@@ -186,6 +186,7 @@ async function loadBookings(container) {
     if (filters.search) params.set('search', filters.search);
 
     const res = await fetch(`/api/bookings?${params}`, { headers });
+    console.log('[bookings] fetch:', `/api/bookings?${params}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || 'Failed to load bookings');
@@ -220,6 +221,7 @@ async function loadBookings(container) {
           <table class="w-full text-sm">
             <thead>
               <tr class="bg-desco-50 border-b border-desco-200 text-[10px] font-medium text-desco-400 uppercase tracking-wider">
+                ${filters.rangeMode ? '<th class="px-4 py-3 text-left">Date</th>' : ''}
                 <th class="px-4 py-3 text-left">Time</th>
                 <th class="px-4 py-3 text-left">Guest</th>
                 <th class="px-4 py-3 text-left">Section</th>
@@ -230,7 +232,7 @@ async function loadBookings(container) {
                 <th class="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-desco-100">${bookings.map(b => bookingRow(b)).join('')}</tbody>
+            <tbody class="divide-y divide-desco-100">${bookings.map(b => bookingRow(b, filters.rangeMode)).join('')}</tbody>
           </table>
         </div>
       </div>
@@ -245,13 +247,15 @@ async function loadBookings(container) {
   }
 }
 
-function bookingRow(b) {
+function bookingRow(b, showDate) {
   const time = b.time_slot ? b.time_slot.slice(0, 5) : '\u2014';
   const sectionLabel = b.section === 'dining' ? 'Dining' : 'Walk-in';
   const serviceName = b.services?.name || '\u2014';
   const isCancelled = b.status === 'cancelled';
+  const dateStr = b.booking_date ? new Date(b.booking_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '';
   return `
     <tr class="${isCancelled ? 'opacity-40' : ''} hover:bg-desco-50/50 transition-colors">
+      ${showDate ? `<td class="px-4 py-3 text-desco-500 text-xs">${dateStr}</td>` : ''}
       <td class="px-4 py-3 font-medium">${time}</td>
       <td class="px-4 py-3">${b.first_name} ${b.last_name}</td>
       <td class="px-4 py-3"><span class="inline-flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full ${b.section === 'dining' ? 'bg-desco-900' : 'bg-desco-400'}"></span>${sectionLabel}</span></td>
