@@ -34,15 +34,22 @@ export default async function handler(req, res) {
 // GET — list bookings (decrypted)
 // ============================================================
 async function handleGet(req, res, supabase) {
-  const { date, section, status, search } = req.query;
+  const { date, date_from, date_to, section, status, search } = req.query;
 
   let query = supabase
     .from('bookings')
     .select('*, services(name)')
+    .order('booking_date', { ascending: true })
     .order('time_slot', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: true });
 
-  if (date) query = query.eq('booking_date', date);
+  // Date range or single date
+  if (date_from && date_to) {
+    query = query.gte('booking_date', date_from).lte('booking_date', date_to);
+  } else if (date) {
+    query = query.eq('booking_date', date);
+  }
+
   if (section && section !== 'all') query = query.eq('section', section);
   if (status && status !== 'all') query = query.eq('status', status);
   if (search) query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
